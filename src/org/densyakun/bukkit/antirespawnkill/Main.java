@@ -1,33 +1,50 @@
 package org.densyakun.bukkit.antirespawnkill;
-import java.util.ArrayList;
-import java.util.List;
 
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.UUID;
+
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+
 public class Main extends JavaPlugin implements Listener, Runnable {
 	public int maxtime = 3;
-	public List<UUIDAndTime> players = new ArrayList<UUIDAndTime>();
+	public boolean onteleport = false;
+	public HashMap<UUID, Integer> times = new HashMap<UUID, Integer>();
+	
 	@Override
 	public void onEnable() {
 		saveDefaultConfig();
 		maxtime = getConfig().getInt("time", maxtime);
+		onteleport = getConfig().getBoolean("onteleport", onteleport);
 		getServer().getPluginManager().registerEvents(this, this);
 		new Thread(this).start();
 	}
+	
+	public boolean isDamageable(UUID uuid) {
+		return a(uuid, new Date().getTime());
+	}
+	
+	private boolean a(UUID uuid, long time) {
+		return maxtime <= time - times.get(uuid);
+	}
+	
 	@Override
 	public void run() {
 		while (isEnabled()) {
 			getServer().getScheduler().scheduleSyncDelayedTask(this, new Runnable() {
 				public void run() {
-					for (int a = 0; a < players.size();) {
-						players.get(a).time++;
-						if (maxtime <= players.get(a).time) {
-							players.remove(a);
-						} else {
-							a++;
+					Iterator<UUID> keys = times.keySet().iterator();
+					while (keys.hasNext()) {
+						UUID uuid = keys.next();
+						if (a(uuid, new Date().getTime())) {
+							times.remove(uuid);
 						}
 					}
 				}
@@ -39,23 +56,21 @@ public class Main extends JavaPlugin implements Listener, Runnable {
 			}
 		}
 	}
+	
 	@EventHandler
-	public void EntityDamage(EntityDamageEvent e) {
-		for (int a = 0; a < players.size(); a++) {
-			if ((e.getEntity().getUniqueId().equals(players.get(a).uuid)) && (players.get(a).time < maxtime)) {
-				e.setCancelled(true);
-				break;
-			}
+	public void EntityDamage(EntityDamageByEntityEvent e) {
+		if (e.getDamager() instanceof Player && a(e.getEntity().getUniqueId(), new Date().getTime())) {
+			e.setCancelled(true);
 		}
 	}
+	
 	@EventHandler
 	public void PlayerRespawn(PlayerRespawnEvent e) {
-		for (int a = 0; a < players.size(); a++) {
-			if (e.getPlayer().getUniqueId().equals(players.get(a).uuid)) {
-				players.get(a).time = 0;
-				return;
-			}
-		}
-		players.add(new UUIDAndTime(e.getPlayer().getUniqueId()));
+		times.put(e.getPlayer().getUniqueId(), 0);
+	}
+	
+	@EventHandler
+	public void PlayerTeleport(PlayerTeleportEvent e) {
+		times.put(e.getPlayer().getUniqueId(), 0);
 	}
 }
